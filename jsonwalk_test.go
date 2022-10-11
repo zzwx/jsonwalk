@@ -47,36 +47,35 @@ func TestWalk(t *testing.T) {
 	}`
 
 	/*
-		Actors - Array - Actors
-		  0 - Map - Actors[0]
-		    name:"Tom Cruise" - String - Actors[0].name
-		    hasChildren:true - Bool - Actors[0].hasChildren
-		    hasGreyHair:false - Bool - Actors[0].hasGreyHair
-		    children - Array - Actors[0].children
-		      0:"Suri" - String - Actors[0].children[0]
-		      1:"Isabella Jane" - String - Actors[0].children[1]
-		      2:"Connor" - String - Actors[0].children[2]
-		    age:56 - Float64 - Actors[0].age
-		    Born At:"Syracuse, NY" - String - Actors[0].Born At
-		    Birthdate:"July 3, 1962" - String - Actors[0].Birthdate
-
-		    photo:"https://jsonformatter.org/img/tom-cruise.jpg" - String - Actors[0].photo
-		    wife:<nil> - Nil - Actors[0].wife
-		    weight:67.5 - Float64 - Actors[0].weight
-		  1 - Map - Actors[1]
-		    age:53 - Float64 - Actors[1].age
-		    Birthdate:"April 4, 1965" - String - Actors[1].Birthdate
-		    photo:"https://jsonformatter.org/img/Robert-Downey-Jr.jpg" - String - Actors[1].photo
-		    wife:"Susan Downey" - String - Actors[1].wife
-		    children - Array - Actors[1].children
-		      0:"Indio Falconer" - String - Actors[1].children[0]
-		      1:"Avri Roel" - String - Actors[1].children[1]
-		      2:"Exton Elias" - String - Actors[1].children[2]
-		    name:"Robert Downey Jr." - String - Actors[1].name
-		    Born At:"New York City, NY" - String - Actors[1].Born At
-		    weight:77.1 - Float64 - Actors[1].weight
-		    hasChildren:true - Bool - Actors[1].hasChildren
-		    hasGreyHair:false - Bool - Actors[1].hasGreyHair
+	 Actors - Array - Actors
+	 	0 - Map - Actors[0]
+	 		name:"Tom Cruise" - String - Actors[0].name
+	 		hasChildren:true - Bool - Actors[0].hasChildren
+	 		hasGreyHair:false - Bool - Actors[0].hasGreyHair
+	 		children - Array - Actors[0].children
+	 			0:"Suri" - String - Actors[0].children[0]
+	 			1:"Isabella Jane" - String - Actors[0].children[1]
+	 			2:"Connor" - String - Actors[0].children[2]
+	 		age:56 - Float64 - Actors[0].age
+	 		Born At:"Syracuse, NY" - String - Actors[0].Born At
+	 		Birthdate:"July 3, 1962" - String - Actors[0].Birthdate
+	 		photo:"https://jsonformatter.org/img/tom-cruise.jpg" - String - Actors[0].photo
+	 		wife:<nil> - Nil - Actors[0].wife
+	 		weight:67.5 - Float64 - Actors[0].weight
+	 	1 - Map - Actors[1]
+	 		age:53 - Float64 - Actors[1].age
+	 		Birthdate:"April 4, 1965" - String - Actors[1].Birthdate
+	 		photo:"https://jsonformatter.org/img/Robert-Downey-Jr.jpg" - String - Actors[1].photo
+	 		wife:"Susan Downey" - String - Actors[1].wife
+	 		children - Array - Actors[1].children
+	 			0:"Indio Falconer" - String - Actors[1].children[0]
+	 			1:"Avri Roel" - String - Actors[1].children[1]
+	 			2:"Exton Elias" - String - Actors[1].children[2]
+	 		name:"Robert Downey Jr." - String - Actors[1].name
+	 		Born At:"New York City, NY" - String - Actors[1].Born At
+	 		weight:77.1 - Float64 - Actors[1].weight
+	 		hasChildren:true - Bool - Actors[1].hasChildren
+	 		hasGreyHair:false - Bool - Actors[1].hasGreyHair
 	*/
 
 	var f interface{}
@@ -90,6 +89,11 @@ func TestWalk(t *testing.T) {
 
 	foundCnt := 0
 	jsonwalk.Walk(m, func(path jsonwalk.WalkPath, key string, value interface{}, vType jsonwalk.NodeValueType) (change bool, newValue interface{}) {
+		if path.String() == "Actors" {
+			if path.Level() != 0 {
+				t.Errorf("expected level 0, got %v", path.Level())
+			}
+		}
 		if path.String() == "Actors[0].name" {
 			v := value.(string)
 			if v == "Tom Cruise" {
@@ -97,11 +101,17 @@ func TestWalk(t *testing.T) {
 			} else {
 				t.Errorf("invalid value for %v: %v", path, v)
 			}
+			if path.Level() != 2 {
+				t.Errorf("expected level 2, got %v", path.Level())
+			}
 		} else if path.String() == "Actors[0].wife" {
 			if value == nil && vType == jsonwalk.Nil {
 				foundCnt++
 			} else {
 				t.Errorf("invalid value for %v: %v", path, value)
+			}
+			if path.Level() != 2 {
+				t.Errorf("expected level 2, got %v", path.Level())
 			}
 		} else if path.String() == "Actors[0].children" {
 			v := value.([]interface{})
@@ -118,12 +128,18 @@ func TestWalk(t *testing.T) {
 			} else {
 				t.Errorf("invalid value for %v: %v", path, v)
 			}
+			if path.Level() != 2 {
+				t.Errorf("expected level 2, got %v", path.Level())
+			}
 		} else if path.String() == "Actors[1].name" {
 			v := value.(string)
 			if v == "Robert Downey Jr." {
 				foundCnt++
 			} else {
 				t.Errorf("invalid value for %v: %v", path, v)
+			}
+			if path.Level() != 2 {
+				t.Errorf("expected level 2, got %v", path.Level())
 			}
 		}
 		return false, nil

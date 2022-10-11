@@ -23,6 +23,7 @@ const (
 type WalkPath interface {
 	fmt.Stringer
 	Child(sub string, parentType NodeValueType) walkPath
+	// Level returns path level, starting with 0 for the first element of the root JSON map.
 	Level() int
 }
 
@@ -55,7 +56,7 @@ func (w walkPath) Child(sub string, parentType NodeValueType) walkPath {
 }
 
 func (w walkPath) Level() int {
-	return w.level // strings.Count(w.path, ".") + strings.Count(w.path, "[")
+	return w.level
 }
 
 // WalkCallback is a type of the callback function that is called for both leaf nodes of types
@@ -122,7 +123,7 @@ func Output(w io.Writer) WalkCallback {
 //	}
 //	jsonwalk.Walk(f.(map[string]interface{}), jsonwalk.Print())
 func Walk(m map[string]interface{}, valueCallback WalkCallback) {
-	mapWalk(walkPath{}, m, valueCallback)
+	mapWalk(walkPath{level: -1}, m, valueCallback)
 }
 
 // WalkWith does the same as Walk except that it accepts starting WalkPath value

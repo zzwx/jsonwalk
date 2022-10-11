@@ -28,7 +28,7 @@ func main() {
 
 	// Let's modify each data.<year> value to Fahrenheit.
 	jsonwalk.Walk(f.(map[string]interface{}), func(path jsonwalk.WalkPath, key string, value interface{}, vType jsonwalk.NodeValueType) (change bool, newValue interface{}) {
-		if path.Level() == 2 && strings.HasPrefix(path.String(), "data.") && vType == jsonwalk.String {
+		if path.Level() == 1 && strings.HasPrefix(path.String(), "data.") && vType == jsonwalk.String {
 			f, err := strconv.ParseFloat(value.(string), 64)
 			if err == nil {
 				// In fact we'll return it back as Float64 right away
@@ -43,7 +43,7 @@ func main() {
 
 	// We know the structure of the "data" path, so we can sort the map as one incoming value of the "data" node.
 	jsonwalk.Walk(f.(map[string]interface{}), func(path jsonwalk.WalkPath, key string, value interface{}, vType jsonwalk.NodeValueType) (change bool, newValue interface{}) {
-		if path.Level() == 1 && path.String() == "data" && vType == jsonwalk.Map {
+		if path.Level() == 0 && path.String() == "data" && vType == jsonwalk.Map {
 			if v, ok := value.(map[string]interface{}); ok {
 				keys := maps.Keys(v)
 				slices.Sort(keys)
