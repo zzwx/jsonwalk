@@ -1,3 +1,4 @@
+// An example of analyzing an embedded JSON data.
 package main
 
 import (
@@ -24,37 +25,52 @@ func main() {
 	if f == nil {
 		return // deal with nil if desired (Walk is a no-op in this case anyway)
 	}
-	jsonwalk.Walk(f.(map[string]interface{}), jsonwalk.Print())
+	jsonwalk.Walk(&f, jsonwalk.Print{})
 
-	// Let's modify each data.<year> value to Fahrenheit.
-	jsonwalk.Walk(f.(map[string]interface{}), func(path jsonwalk.WalkPath, key string, value interface{}, vType jsonwalk.NodeValueType) (change bool, newValue interface{}) {
+	years := make(map[string]float64)
+
+	// Collect data.<year> value
+	jsonwalk.Walk(&f, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, vType jsonwalk.NodeValueType) {
 		if path.Level() == 1 && strings.HasPrefix(path.String(), "data.") && vType == jsonwalk.String {
 			f, err := strconv.ParseFloat(value.(string), 64)
 			if err == nil {
-				// In fact we'll return it back as Float64 right away
-				return true, float64(f*9.0/5.0) + 32
-			}
-		}
-
-		return false, nil
-	})
-
-	fmt.Println()
-
-	// We know the structure of the "data" path, so we can sort the map as one incoming value of the "data" node.
-	jsonwalk.Walk(f.(map[string]interface{}), func(path jsonwalk.WalkPath, key string, value interface{}, vType jsonwalk.NodeValueType) (change bool, newValue interface{}) {
-		if path.Level() == 0 && path.String() == "data" && vType == jsonwalk.Map {
-			if v, ok := value.(map[string]interface{}); ok {
-				keys := maps.Keys(v)
-				slices.Sort(keys)
-				for _, k := range keys {
-					if f, ok := v[k].(float64); ok { // It's already float64 due to previous modification
-						fmt.Printf("%v %6.2f°F\n", k, f)
-					}
+				if k, ok := key.(string); ok {
+					years[k] = f
 				}
-
 			}
 		}
-		return false, nil
-	})
+	}))
+
+	keys := maps.Keys(years)
+	slices.Sort(keys)
+
+	// average first twenty
+	first := keys[0:100]
+	sum := 0.0
+	for _, k := range first {
+		sum += toF(years[k])
+	}
+	av := sum / float64(len(first))
+
+	fmt.Println("-year-|-temperature-")
+	for _, k := range keys {
+		v := toF(years[k])
+		diff := fmt.Sprintf("%+6.2f%%", pDiff(av, v))
+		if slices.Index(first, k) >= 0 {
+			diff += " *"
+		}
+
+		fmt.Printf(" %v  %6.2f°F %v\n", k, v, diff)
+	}
+
+	fmt.Printf("Percentage shown is the difference between each line\nand the avarage of the first %d years (%.2f)\nThose years are marked with *.\n", len(first), av)
+
+}
+
+func toF(c float64) float64 {
+	return float64(c*9.0/5.0) + 32
+}
+
+func pDiff(old, new float64) float64 {
+	return 100 * (new - old) / old
 }

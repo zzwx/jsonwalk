@@ -10,6 +10,32 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func TestRoot(t *testing.T) {
+	roots := []string{
+		`{
+			"name": "Anna",
+			"age": 99
+		}`,
+		`[ 1, 2, "three", 4, 5 ]`,
+		`"abc"`,
+		`123.45`,
+		`true`,
+		`false`,
+		`null`,
+	}
+
+	for _, r := range roots {
+		var f interface{}
+		err := json.Unmarshal([]byte(r), &f)
+		if err != nil {
+			t.Errorf("error umarshalling json: %v", err)
+			return
+		}
+		fmt.Printf("--- %T:\n", f)
+		jsonwalk.Walk(&f, jsonwalk.Print{})
+	}
+}
+
 func TestWalk(t *testing.T) {
 	src := `{
 		"Actors": [
@@ -85,10 +111,9 @@ func TestWalk(t *testing.T) {
 		t.Errorf("error umarshalling json: %v", err)
 		return
 	}
-	m := f.(map[string]interface{})
 
 	foundCnt := 0
-	jsonwalk.Walk(m, func(path jsonwalk.WalkPath, key string, value interface{}, vType jsonwalk.NodeValueType) (change bool, newValue interface{}) {
+	jsonwalk.Walk(&f, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, vType jsonwalk.NodeValueType) {
 		if path.String() == "Actors" {
 			if path.Level() != 0 {
 				t.Errorf("expected level 0, got %v", path.Level())
@@ -142,8 +167,7 @@ func TestWalk(t *testing.T) {
 				t.Errorf("expected level 2, got %v", path.Level())
 			}
 		}
-		return false, nil
-	})
+	}))
 
 	expectedFoundCnt := 4
 
@@ -286,11 +310,10 @@ func testPrint(idx int, jsonString string, t *testing.T) {
 		t.Errorf("empty json\n")
 		return
 	}
-	m := f.(map[string]interface{})
 
-	jsonwalk.Walk(m, jsonwalk.Print())
+	jsonwalk.Walk(&f, jsonwalk.Print{})
 
-	_, err = json.Marshal(m)
+	_, err = json.Marshal(f)
 	if err != nil {
 		t.Errorf("error marshalling json: %v", err)
 	}
