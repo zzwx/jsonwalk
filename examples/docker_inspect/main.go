@@ -6,7 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"os"
+	"log"
 	"os/exec"
 	"strings"
 
@@ -20,8 +20,7 @@ func main() {
 	cmd.Stderr = &errb
 	err := cmd.Run()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalln(err, errb.String())
 	}
 	spl := strings.Split(outb.String(), "\n")
 	first := true
@@ -44,8 +43,7 @@ func readInsp(cont string) {
 	cmd.Stderr = &errb
 	err := cmd.Run()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalln(err, errb.String())
 	}
 	analyze(outb.Bytes())
 }
@@ -56,7 +54,7 @@ func analyze(src []byte) {
 	if err != nil {
 		panic(err)
 	}
-	// jsonwalk.Walk(&v, jsonwalk.Print{})
+	//jsonwalk.Walk(&v, jsonwalk.Print{})
 
 	name := ""
 	hostName := ""
@@ -66,22 +64,22 @@ func analyze(src []byte) {
 	warning := ""
 	image := ""
 
-	jsonwalk.Walk(&v, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, vType jsonwalk.NodeValueType) {
-		if path.String() == "[0].Config.Env" && vType == jsonwalk.Array {
+	jsonwalk.Walk(&v, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, tp jsonwalk.NodeValueType) {
+		if path.Path() == "[0].Config.Env" && tp == jsonwalk.Array {
 			for _, v := range value.([]interface{}) {
 				env = append(env, v.(string))
 			}
-		} else if (path.String() == "[0].Config.Hostname") && vType == jsonwalk.String {
+		} else if (path.Path() == "[0].Config.Hostname") && tp == jsonwalk.String {
 			hostName = value.(string)
-		} else if (path.String() == "[0].Name") && vType == jsonwalk.String {
+		} else if (path.Path() == "[0].Name") && tp == jsonwalk.String {
 			name = value.(string)
-		} else if (path.String() == "[0].State.Status") && vType == jsonwalk.String {
+		} else if (path.Path() == "[0].State.Status") && tp == jsonwalk.String {
 			status = value.(string)
-		} else if (path.String() == "[0].Config.WorkingDir") && vType == jsonwalk.String {
+		} else if (path.Path() == "[0].Config.WorkingDir") && tp == jsonwalk.String {
 			workingDir = value.(string)
-		} else if (path.String() == "[0].Config.Image") && vType == jsonwalk.String {
+		} else if (path.Path() == "[0].Config.Image") && tp == jsonwalk.String {
 			image = value.(string)
-		} else if strings.HasPrefix(path.String(), "[1]") {
+		} else if strings.HasPrefix(path.Path(), "[1]") {
 			warning = "--- warning: [1] found in the array"
 		}
 

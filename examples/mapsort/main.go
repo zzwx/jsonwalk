@@ -30,8 +30,8 @@ func main() {
 	years := make(map[string]float64)
 
 	// Collect data.<year> value
-	jsonwalk.Walk(&f, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, vType jsonwalk.NodeValueType) {
-		if path.Level() == 1 && strings.HasPrefix(path.String(), "data.") && vType == jsonwalk.String {
+	jsonwalk.Walk(&f, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, tp jsonwalk.NodeValueType) {
+		if path.Level() == 2 && strings.HasPrefix(path.Path(), "data.") && tp == jsonwalk.String {
 			f, err := strconv.ParseFloat(value.(string), 64)
 			if err == nil {
 				if k, ok := key.(string); ok {
@@ -44,8 +44,13 @@ func main() {
 	keys := maps.Keys(years)
 	slices.Sort(keys)
 
+	cnt := 100
+	if len(keys) < cnt {
+		return
+	}
+
 	// average first twenty
-	first := keys[0:100]
+	first := keys[0:cnt]
 	sum := 0.0
 	for _, k := range first {
 		sum += toF(years[k])
@@ -63,8 +68,8 @@ func main() {
 		fmt.Printf(" %v  %6.2f°F %v\n", k, v, diff)
 	}
 
-	fmt.Printf("Percentage shown is the difference between each line\nand the avarage of the first %d years (%.2f)\nThose years are marked with *.\n", len(first), av)
-
+	fmt.Printf("Percentage shown is the difference between each line and the avarage of\n")
+	fmt.Printf("the oldest available %d years [%v..%v] (%.2f) that are marked with *\n", len(first), keys[0], keys[len(first)-1], av)
 }
 
 func toF(c float64) float64 {

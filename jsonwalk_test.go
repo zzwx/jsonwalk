@@ -10,6 +10,26 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+func ExampleWalk_print() {
+	var f interface{}
+	err := json.Unmarshal([]byte(`[ 0, 0.1, true, {"three": false}, [4.0, 4.1], 5 ]`), &f)
+	if err != nil {
+		return
+	}
+	jsonwalk.Walk(&f, jsonwalk.Print{})
+	// Output:
+	// (a)
+	// 0:0 |[0]| (0:f)
+	// 1:0.1 |[1]| (1:f)
+	// 2:true |[2]| (2:b)
+	// 3 |[3]| (3:m)
+	//   "three":false |[3].three| (s:b)
+	// 4 |[4]| (4:a)
+	//   0:4 |[4][0]| (0:f)
+	//   1:4.1 |[4][1]| (1:f)
+	// 5:5 |[5]| (5:f)
+}
+
 func TestRoot(t *testing.T) {
 	roots := []string{
 		`{
@@ -33,6 +53,11 @@ func TestRoot(t *testing.T) {
 		}
 		fmt.Printf("--- %T:\n", f)
 		jsonwalk.Walk(&f, jsonwalk.Print{})
+		jsonwalk.Walk(&f, jsonwalk.Callback(func(path jsonwalk.WalkPath, key, value interface{}, vType jsonwalk.NodeValueType) {
+			if path.Level() > 1 {
+				t.Errorf("level is %d, should never be more than 1 for %v", path.Level(), path.Path())
+			}
+		}))
 	}
 }
 
@@ -112,33 +137,35 @@ func TestWalk(t *testing.T) {
 		return
 	}
 
+	jsonwalk.Walk(&f, jsonwalk.Print{})
+
 	foundCnt := 0
 	jsonwalk.Walk(&f, jsonwalk.Callback(func(path jsonwalk.WalkPath, key interface{}, value interface{}, vType jsonwalk.NodeValueType) {
-		if path.String() == "Actors" {
-			if path.Level() != 0 {
-				t.Errorf("expected level 0, got %v", path.Level())
+		if path.Path() == "Actors" {
+			if path.Level() != 1 {
+				t.Errorf("expected level 1, got %v", path.Level())
 			}
 		}
-		if path.String() == "Actors[0].name" {
+		if path.Path() == "Actors[0].name" {
 			v := value.(string)
 			if v == "Tom Cruise" {
 				foundCnt++
 			} else {
 				t.Errorf("invalid value for %v: %v", path, v)
 			}
-			if path.Level() != 2 {
-				t.Errorf("expected level 2, got %v", path.Level())
+			if path.Level() != 3 {
+				t.Errorf("expected level 3, got %v", path.Level())
 			}
-		} else if path.String() == "Actors[0].wife" {
+		} else if path.Path() == "Actors[0].wife" {
 			if value == nil && vType == jsonwalk.Nil {
 				foundCnt++
 			} else {
 				t.Errorf("invalid value for %v: %v", path, value)
 			}
-			if path.Level() != 2 {
-				t.Errorf("expected level 2, got %v", path.Level())
+			if path.Level() != 3 {
+				t.Errorf("expected level 3, got %v", path.Level())
 			}
-		} else if path.String() == "Actors[0].children" {
+		} else if path.Path() == "Actors[0].children" {
 			v := value.([]interface{})
 			var asStr []string
 
@@ -153,18 +180,18 @@ func TestWalk(t *testing.T) {
 			} else {
 				t.Errorf("invalid value for %v: %v", path, v)
 			}
-			if path.Level() != 2 {
-				t.Errorf("expected level 2, got %v", path.Level())
+			if path.Level() != 3 {
+				t.Errorf("expected level 3, got %v", path.Level())
 			}
-		} else if path.String() == "Actors[1].name" {
+		} else if path.Path() == "Actors[1].name" {
 			v := value.(string)
 			if v == "Robert Downey Jr." {
 				foundCnt++
 			} else {
 				t.Errorf("invalid value for %v: %v", path, v)
 			}
-			if path.Level() != 2 {
-				t.Errorf("expected level 2, got %v", path.Level())
+			if path.Level() != 3 {
+				t.Errorf("expected level 3, got %v", path.Level())
 			}
 		}
 	}))
@@ -172,7 +199,7 @@ func TestWalk(t *testing.T) {
 	expectedFoundCnt := 4
 
 	if foundCnt != expectedFoundCnt {
-		t.Errorf("supporsed to find %v paths, got %v", expectedFoundCnt, foundCnt)
+		t.Errorf("supposed to find %v paths, got %v", expectedFoundCnt, foundCnt)
 	}
 
 }

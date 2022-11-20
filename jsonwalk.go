@@ -21,37 +21,67 @@ const (
 )
 
 type WalkPath interface {
-	fmt.Stringer
-	Child(pathAppend string, parentType NodeValueType) walkPath
-	// Level returns path level, starting with 0 for the first element of the root JSON map.
+	// Path returns a path leading to the node in a string representation.
+	Path() string
+	// Level returns path level, starting with 0 for the first element.
 	Level() int
+	// MapEl constructs a child element with the k key.
+	MapEl(k string) walkPath
+	// ArrayEl constructs an array child element with index i.
+	ArrayEl(i int) walkPath
 }
 
 // walkPath is a default WalkPath implementation for Walk function
 // which can be overridden with the WalkWith call.
 type walkPath struct {
-	path  string
-	level int
+	parent      *walkPath // nil parent for the first node
+	portion     string
+	preSepErase bool
+	level       int // origin has the level of 0
 }
 
-func (w walkPath) String() string {
-	return w.path
+func newWalkPath() walkPath {
+	return walkPath{} // all default
 }
 
-func (w walkPath) Child(pathAppend string, parentType NodeValueType) walkPath {
-	n := walkPath{
-		path:  w.path,
-		level: w.level + 1,
-	}
-
-	if parentType == Map {
-		if n.path != "" {
-			n.path += "."
+func (w walkPath) Path() string {
+	var s string
+	var v = &w
+	for {
+		if v != nil && v.parent != nil {
+			var sep = "."
+			if v.preSepErase {
+				sep = ""
+			}
+			if v.parent.parent == nil {
+				sep = ""
+			}
+			s = sep + v.portion + s
+		} else {
+			break
 		}
+		v = v.parent
 	}
+	return s
+}
 
-	n.path = n.path + pathAppend
+func (w walkPath) MapEl(k string) walkPath {
+	n := walkPath{
+		parent:      &w,
+		portion:     k,
+		preSepErase: false,
+		level:       w.level + 1,
+	}
+	return n
+}
 
+func (w walkPath) ArrayEl(i int) walkPath {
+	n := walkPath{
+		parent:      &w,
+		portion:     "[" + strconv.Itoa(i) + "]",
+		preSepErase: true,
+		level:       w.level + 1,
+	}
 	return n
 }
 
@@ -66,8 +96,8 @@ func (w walkPath) Level() int {
 // Float64 ("number" in JSON terminology)
 // as well as container nodes of types Array and Map ("object" in JSON terminology).
 //
-// The callback receives the path in a form of WalkPath, which, if not overridden by WalkWith, returns a full non-escaped
-// string-like path, for every discovered Map in a simple `.`-separated form and `[int]` form to separate array elements.
+// WalkCallback.C receives the node path in a form of WalkPath, which, if not overridden by WalkWith,
+// returns a full non-escaped string-like path, for every discovered Map in a simple "."-separated form and "[int]" form to separate array elements.
 //
 // No expectations as to the order in which paths based on Map keys are discovered should be made. Array elements arrive in the order
 // they are found in JSON. The parent of a node is guaranteed to be discovered before its child.
@@ -79,19 +109,19 @@ func (w walkPath) Level() int {
 //
 // The key for array elements is of type int, for map it is depending on the key type.
 type WalkCallback interface {
-	C(path WalkPath, key interface{}, value interface{}, vType NodeValueType)
+	C(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType)
 }
 
 type f struct {
-	f func(path WalkPath, key interface{}, value interface{}, vType NodeValueType)
+	f func(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType)
 }
 
-func (f f) C(path WalkPath, key interface{}, value interface{}, vType NodeValueType) {
-	f.f(path, key, value, vType)
+func (f f) C(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType) {
+	f.f(path, key, value, nodeValueType)
 }
 
 // Callback is a wrapper that accepts a callback function and returns a value that satisfies the WalkCallback interface.
-func Callback(c func(path WalkPath, key interface{}, value interface{}, vType NodeValueType)) WalkCallback {
+func Callback(c func(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType)) WalkCallback {
 	return f{c}
 }
 
@@ -101,13 +131,13 @@ func Callback(c func(path WalkPath, key interface{}, value interface{}, vType No
 type Print struct {
 }
 
-func (Print) C(path WalkPath, key interface{}, value interface{}, vType NodeValueType) {
-	NewOutput(os.Stdout).C(path, key, value, vType)
+func (Print) C(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType) {
+	NewOutput(os.Stdout).C(path, key, value, nodeValueType)
 }
 
-// Output implements WalkCallback in a form of a simple tree-like structure
+// output implements WalkCallback in a form of a simple tree-like structure
 // good enough for debugging. NewOutput allows to specify the output.
-type Output struct {
+type output struct {
 	w io.Writer
 }
 
@@ -115,7 +145,8 @@ type Output struct {
 // It satisfies the WalkCallback interface.
 //
 // The output is a printout of the JSON structure with the paths between two vertical lines and
-// hints on the key and value types.
+// hints on the key and value types. Indentation is squeezed to the left to save space. The actual
+// level can be assumed from the amount of separate elements in the path.
 //
 // The first line of the output gives a hint on the root value type if it's a Map:
 //
@@ -133,48 +164,51 @@ type Output struct {
 //	"abc" (s)
 //
 // All subsequent lines provide the type at the end of each line. It can also be in the form
-// of a (key:value) string:
+// of a (keyType:valueType) for maps and values of maps, or (index:valueType) for arrays:
 //
 //	"Born At":"New York City, NY" |Actors[1].Born At| (s:s)
 //
-// This way it hints on the types of both the key and value.
-//
-// For the array elements, the first will be represented as an integer, actual index:
-//
 //	1:"Isabella Jane" |Actors[0].children[1]| (1:s)
-func NewOutput(w io.Writer) *Output {
-	return &Output{w: w}
+//
+//	"employees" |employees| (s:a)
+func NewOutput(w io.Writer) *output {
+	return &output{w: w}
 }
 
-func (o *Output) C(path WalkPath, key interface{}, value interface{}, vType NodeValueType) {
-	if vType == Array || vType == Map {
+func (o *output) C(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType) {
+	var level = path.Level()
+	level = level - 1
+	if level < 0 {
+		level = 0
+	}
+	keyType := ""
+	if k, ok := key.(int); ok { // Key is of type int for array indices
+		keyType = strconv.Itoa(k)
+	} else {
+		keyType = strings.ToLower(t(key).String()[:1])
+	}
+	levelStr := ""
+	//levelStr = fmt.Sprintf(" #%d", path.Level())
+	if nodeValueType == Array || nodeValueType == Map {
 		// Not a leaf, only dealing with the key
-		if path.Level() >= 0 {
-			var lv string
-			lv = strings.Repeat("  ", path.Level())
-			_, _ = fmt.Fprintf(o.w, "%v%#v |%v| (%v)\n",
-				lv, key, strings.TrimSpace(path.String()), strings.ToLower(vType.String()[:1]))
-		} else {
+		if path.Level() == 0 {
 			// For root map / array we simply output its type.
-			_, _ = fmt.Fprintf(o.w, "(%v)\n",
-				strings.ToLower(vType.String()[:1]))
+			_, _ = fmt.Fprintf(o.w, "(%v)%v\n",
+				strings.ToLower(nodeValueType.String()[:1]), levelStr)
+		} else {
+			var lv = strings.Repeat("  ", level)
+			_, _ = fmt.Fprintf(o.w, "%v%#v |%v| (%v:%v)%v\n",
+				lv, key, strings.TrimSpace(path.Path()), keyType, strings.ToLower(nodeValueType.String()[:1]), levelStr)
 		}
 	} else {
-		if path.Level() >= 0 {
-			var lv = strings.Repeat("  ", path.Level())
-			keyType := ""
-			if k, ok := key.(int); ok {
-				keyType = strconv.Itoa(k)
-			} else {
-				keyType = strings.ToLower(t(key).String()[:1])
-			}
-
-			_, _ = fmt.Fprintf(o.w, "%v%#v:%#v |%v| (%v:%v)\n",
-				lv, key, value, strings.TrimSpace(path.String()), keyType, strings.ToLower(vType.String()[:1]))
-		} else {
+		if path.Level() == 0 {
 			// For root single value we simply output its value and type.
-			_, _ = fmt.Fprintf(o.w, "%#v (%v)\n",
-				value, strings.ToLower(vType.String()[:1]))
+			_, _ = fmt.Fprintf(o.w, "%#v (%v)%v\n",
+				value, strings.ToLower(nodeValueType.String()[:1]), levelStr)
+		} else {
+			var lv = strings.Repeat("  ", level)
+			_, _ = fmt.Fprintf(o.w, "%v%#v:%#v |%v| (%v:%v)%v\n",
+				lv, key, value, strings.TrimSpace(path.Path()), keyType, strings.ToLower(nodeValueType.String()[:1]), levelStr)
 		}
 		return
 	}
@@ -182,7 +216,7 @@ func (o *Output) C(path WalkPath, key interface{}, value interface{}, vType Node
 
 // Walk walks unmarshalled arbitrary JSON with any of the root values.
 //
-// It calls valueCallback for every leaf of types Nil, Bool, String or Float64 as well as every non-leaf node of types Array or Map.
+// It calls walk.C for every leaf of types Nil, Bool, String or Float64 as well as every non-leaf node of types Array or Map.
 // Callback receives discovered type in a form of NodeValueType for any logic to be performed based on that.
 //
 // Map keys will arrive in unpredictable order.
@@ -192,28 +226,27 @@ func (o *Output) C(path WalkPath, key interface{}, value interface{}, vType Node
 //	if err != nil {
 //		return // deal with error
 //	}
-//	if f == nil {
-//		return // deal with nil if desired (Walk is a no-op in this case anyway)
-//	}
-//	jsonwalk.Walk(&f, jsonwalk.Print)
+//	jsonwalk.Walk(&f, jsonwalk.Print{})
 //
 // For a custom callback, the easiest shortcut is a Callback which accepts a callback function.
 //
-//	jsonwalk.Callback(c func(path WalkPath, key interface{}, value interface{}, vType NodeValueType))
-func Walk(m *interface{}, valueCallback WalkCallback) {
-	w(walkPath{level: -1}, nil, m, valueCallback)
+//	jsonwalk.Walk(&f, jsonwalk.Callback(c func(path WalkPath, key interface{}, value interface{}, nodeValueType NodeValueType) {
+//	  ...
+//	}))
+func Walk(m *interface{}, walk WalkCallback) {
+	w(newWalkPath(), nil, m, walk)
 }
 
 // WalkWith does the same as Walk except that it accepts starting WalkPath value
-// which can be of a different type than the built-in walkPath,
-// allowing for additional flexibility.
+// which can be of a different type than the built-in walkPath, allowing for an overriden
+// behavior of path construction.
 //
 // If nil is passed for path, the function falls back to calling Walk.
-func WalkWith(path WalkPath, m *interface{}, valueCallback WalkCallback) {
+func WalkWith(path WalkPath, m *interface{}, walk WalkCallback) {
 	if path == nil {
-		Walk(m, valueCallback)
+		Walk(m, walk)
 	} else {
-		w(path, nil, m, valueCallback)
+		w(path, nil, m, walk)
 	}
 }
 
@@ -236,48 +269,47 @@ func t(k interface{}) NodeValueType {
 	}
 }
 
-func w(path WalkPath, k interface{}, v *interface{}, valueCallback WalkCallback) {
+func w(path WalkPath, k interface{}, v *interface{}, walk WalkCallback) {
 	switch vt := (*v).(type) {
 	case nil:
-		if valueCallback != nil {
-			valueCallback.C(path, k, vt, Nil)
+		if walk != nil {
+			walk.C(path, k, vt, Nil)
 		}
 	case bool:
-		if valueCallback != nil {
-			valueCallback.C(path, k, vt, Bool)
+		if walk != nil {
+			walk.C(path, k, vt, Bool)
 		}
 	case string:
-		if valueCallback != nil {
-			valueCallback.C(path, k, vt, String)
+		if walk != nil {
+			walk.C(path, k, vt, String)
 		}
 	case float64:
-		if valueCallback != nil {
-			valueCallback.C(path, k, vt, Float64)
+		if walk != nil {
+			walk.C(path, k, vt, Float64)
 		}
 	case []interface{}:
-		if valueCallback != nil {
-			valueCallback.C(path, k, vt, Array)
+		if walk != nil {
+			walk.C(path, k, vt, Array)
 		}
-		arrayWalk(path, &vt, valueCallback)
+		arrayWalk(path, &vt, walk)
 	case map[string]interface{}:
-		if valueCallback != nil {
-			valueCallback.C(path, k, vt, Map)
+		if walk != nil {
+			walk.C(path, k, vt, Map)
 		}
-		mapWalk(path, &vt, valueCallback)
+		mapWalk(path, &vt, walk)
 	default:
 		panic(fmt.Sprintf("%v=%v (unknown type %v)", k, vt, reflect.TypeOf(vt)))
 	}
 }
 
-func mapWalk(path WalkPath, m *map[string]interface{}, valueCallback WalkCallback) {
+func mapWalk(path WalkPath, m *map[string]interface{}, walk WalkCallback) {
 	for k, v := range *m {
-		w(path.Child(k, Map), k, &v, valueCallback)
+		w(path.MapEl(k), k, &v, walk)
 	}
 }
 
-// arrayWalk is decoupled to support array-in-array recursion.
-func arrayWalk(path WalkPath, a *[]interface{}, valueCallback WalkCallback) {
-	for i, u := range *a {
-		w(path.Child("["+strconv.Itoa(i)+"]", Array), i, &u, valueCallback)
+func arrayWalk(path WalkPath, a *[]interface{}, walk WalkCallback) {
+	for i, v := range *a {
+		w(path.ArrayEl(i), i, &v, walk)
 	}
 }
